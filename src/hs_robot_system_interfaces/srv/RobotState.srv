@@ -1,0 +1,9 @@
+# Request:
+string command     # "get" or "set"
+string new_state   # only used when command == "set"
+
+---
+# Response:
+string current_state
+bool success
+string message
