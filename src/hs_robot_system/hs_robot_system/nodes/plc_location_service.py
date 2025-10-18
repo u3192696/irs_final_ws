@@ -32,7 +32,8 @@ class PLC_Location_Server(Node):
         Handles service call; returns a random location.
         """
         # In a real version, you'd fetch current task/box location from a PLC or database
-        location = random.choice(self._available_locations)
+        #location = random.choice(self._available_locations)
+        location = 'B'
         self.get_logger().info(f"📦 PLC request received → responding with location {location}")
         response.location = location
         return response
