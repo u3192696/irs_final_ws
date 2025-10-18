@@ -16,7 +16,7 @@ class PLC_Location_Server(Node):
 
     def __init__(self):
         super().__init__('plc_location_service')
-        self.get_logger().info('PLC Location Service starting...')
+        self.get_logger().info('📦 PLC Location Service starting...')
         # Create service (name must match the client in nav_controller)
         self._srv = self.create_service(
             PLCLocation,
@@ -33,7 +33,7 @@ class PLC_Location_Server(Node):
         """
         # In a real version, you'd fetch current task/box location from a PLC or database
         location = random.choice(self._available_locations)
-        self.get_logger().info(f"PLC request received → responding with location {location}")
+        self.get_logger().info(f"📦 PLC request received → responding with location {location}")
         response.location = location
         return response
 
@@ -41,11 +41,11 @@ class PLC_Location_Server(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = PLC_Location_Server()
-    node.get_logger().info('✅ PLC Location Service ready and waiting for requests.')
+    node.get_logger().info('📦✅ PLC Location Service ready and waiting for requests.')
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('Shutting down PLC Location Service...')
+        node.get_logger().info('📦 Shutting down PLC Location Service...')
     finally:
         node.destroy_node()
         rclpy.shutdown()

@@ -59,9 +59,9 @@ def main():
     plc_client = node.create_client(PLCLocation, 'get_plc_location')
 
     # Make sure the service is available before use
-    node.get_logger().info('Waiting for PLC location service...')
+    node.get_logger().info('🤖 Waiting for PLC location service...')
     plc_client.wait_for_service()
-    node.get_logger().info('PLC location service available.')
+    node.get_logger().info('🤖 PLC location service available.')
 
     # ----------------------------------------------------------
     # Robot State (service-based)
@@ -71,9 +71,9 @@ def main():
     state_client = node.create_client(RobotState, 'robot_state_service')
     
     # Make sure the service is available before use
-    node.get_logger().info('Connecting to robot_state_service...')
+    node.get_logger().info('🤖 Connecting to robot_state_service...')
     state_client.wait_for_service()
-    node.get_logger().info('Connected to robot_state_service.')
+    node.get_logger().info('🤖 Connected to robot_state_service.')
 
     # --- Publishers ---
     # Publisher: tell others when robot arrives; publishes to robot/arrived that robot is at location
@@ -87,7 +87,7 @@ def main():
 
     # --- Function to send a goal and wait for result ---
     def send_and_wait(pose: PoseStamped) -> bool:
-        node.get_logger().info('Waiting for Nav2 action server...')
+        node.get_logger().info('🤖 Waiting for Nav2 action server...')
         client.wait_for_server()
 
         pose.header.stamp = node.get_clock().now().to_msg()
@@ -102,29 +102,29 @@ def main():
                 dist = fb.feedback.distance_remaining
                 # Throttle the log output to reduce clutter
                 #node.get_logger().info(f"Distance remaining: {dist:.2f} m")
-                node.get_logger().info_throttle(2.0, f"Distance remaining: {dist:.2f} m")
+                node.get_logger().info_throttle(2.0, f"🤖 Distance remaining: {dist:.2f} m")
 
         def goal_response_cb(future):
             goal_handle = future.result()
             if not goal_handle.accepted:
-                node.get_logger().error('Goal was rejected by Nav2!')
+                node.get_logger().error('🤖 Goal was rejected by Nav2!')
                 done_event.set()
                 return
 
-            node.get_logger().info('Goal accepted, waiting for result...')
+            node.get_logger().info('🤖 Goal accepted, waiting for result...')
             result_future = goal_handle.get_result_async()
             result_future.add_done_callback(result_cb)
 
         def result_cb(future):
             result = future.result()
             status = result.status
-            node.get_logger().info(f'Nav2 returned status: {status}')
+            node.get_logger().info(f'🤖 Nav2 returned status: {status}')
             if status == 4:
-                node.get_logger().info('Goal reached successfully!')
+                node.get_logger().info('🤖 Goal reached successfully!')
                 msg = String()
                 msg.data = "arrived"
                 arrival_pub.publish(msg)
-                node.get_logger().info("📣 Published 'arrived' message for arm node.")
+                node.get_logger().info("🤖 Published 'arrived' message for arm node.")
                 result_holder['success'] = True
                 if get_robot_state() == 'move_to_pick':
                     set_robot_state('picking')
@@ -133,7 +133,7 @@ def main():
                 else:
                     set_robot_state('unknown')
             else:
-                node.get_logger().warn(f'Navigation failed with status {status}.')
+                node.get_logger().warn(f'🤖 Navigation failed with status {status}.')
             done_event.set()
 
         send_goal_future = client.send_goal_async(goal, feedback_cb)
@@ -157,7 +157,7 @@ def main():
         if response.success:
             return response.current_state.strip().lower()
         else:
-            node.get_logger().warn('Failed to get robot state.')
+            node.get_logger().warn('🤖 Failed to get robot state.')
             return 'unknown'
 
     # Set the robot state via the service.
@@ -171,7 +171,7 @@ def main():
         if response.success:
             node.get_logger().info(f"🤖 State updated → {new_state}")
         else:
-            node.get_logger().warn(f"State update failed: {response.message}")
+            node.get_logger().warn(f"🤖 State update failed: {response.message}")
 
     # --- Function to drive robot manually for a duration ---
     def drive(linear_speed, angular_speed, duration_sec):
@@ -179,7 +179,7 @@ def main():
         twist.linear.x = linear_speed
         twist.angular.z = angular_speed
         start_time = node.get_clock().now()
-        node.get_logger().info(f"Executing drive command for {duration_sec} seconds.")
+        node.get_logger().info(f"🤖 Executing drive command for {duration_sec} seconds.")
         while (node.get_clock().now() - start_time).nanoseconds < duration_sec * 1e9:
             cmd_pub.publish(twist)
             time.sleep(0.1)
@@ -187,7 +187,7 @@ def main():
         twist.linear.x = 0.0
         twist.angular.z = 0.0
         cmd_pub.publish(twist)
-        node.get_logger().info("Drive command finished.")
+        node.get_logger().info("🤖 Drive command finished.")
 
     # Check every 5 seconds for new box location when idle 
     def periodic_plc_request():
@@ -210,14 +210,14 @@ def main():
             try:
                 response = fut.result()
                 location = response.location.strip().upper()
-                node.get_logger().info(f"📦 Received PLC location from service: {location}")
+                node.get_logger().info(f"🤖 Received PLC location from service: {location}")
                 if location in locations:
                     set_robot_state('move_to_pick')
                     threading.Thread(target=send_and_wait, args=(locations[location],)).start()
                 else:
-                    node.get_logger().warn(f"Unknown location '{location}' — ignored.")
+                    node.get_logger().warn(f"🤖 Unknown location '{location}' — ignored.")
             except Exception as e:
-                node.get_logger().error(f"PLC location service call failed: {e}")
+                node.get_logger().error(f"🤖 PLC location service call failed: {e}")
 
         future.add_done_callback(response_cb)
         return True
@@ -236,15 +236,15 @@ def main():
                 set_robot_state('move_to_place')
 
                 # Step 1: Reverse for 1 second (negative linear speed)
-                node.get_logger().info("Reversing 0.5 meters before turning.")
+                node.get_logger().info("🤖 Reversing 0.5 meters before turning.")
                 drive(linear_speed=-0.2, angular_speed=0.0, duration_sec=1.0)
 
                 # Step 2: Rotate 180 degrees (pi radians)
-                node.get_logger().info("Rotating 180 degrees.")
+                node.get_logger().info("🤖 Rotating 180 degrees.")
                 drive(linear_speed=0.0, angular_speed=0.3, duration_sec=10.0)
 
                 # Step 3: Proceed to place waypoint
-                node.get_logger().info("Heading to place waypoint.")
+                node.get_logger().info("🤖 Heading to place waypoint.")
                 send_and_wait(locations['place']) #going to dropoff point
 
             elif current_state == 'placing':
@@ -257,7 +257,7 @@ def main():
 
 
 
-    node.get_logger().info("Listening to PLC data and ready to move...")
+    node.get_logger().info("🤖 Listening to PLC data and ready to move...")
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
