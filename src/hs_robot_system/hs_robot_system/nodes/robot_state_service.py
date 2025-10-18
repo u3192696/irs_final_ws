@@ -23,7 +23,7 @@ class RobotStateService(Node):
                 self.get_logger().info(response.message)
 
             elif request.command.lower() == 'set':
-                new_state = request.new_state.strip().upper()
+                new_state = request.new_state.strip().lower()
                 self.get_logger().info(f'🧠 Request to set state → {new_state}')
                 self._current_state = new_state
                 response.current_state = self._current_state
