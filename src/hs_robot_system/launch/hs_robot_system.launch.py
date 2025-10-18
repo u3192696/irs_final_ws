@@ -4,7 +4,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node, LifecycleNode
 from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 
 
 def generate_launch_description():
@@ -188,6 +188,7 @@ def generate_launch_description():
 
     # --- Final Launch Description
     return LaunchDescription([
+        SetEnvironmentVariable('RMW_FASTRTPS_MAX_MESSAGE_SIZE', '1048576'),
         declare_use_sim_time,
 
         # TF tree

@@ -3,8 +3,8 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-
 from moveit_msgs.action import MoveGroup
+from moveit_msgs.msg import MotionPlanRequest, Constraints, JointConstraint
 
 from hs_robot_system_interfaces.srv import RobotState
 
@@ -35,25 +35,28 @@ class ArmManager(Node):
         self.get_logger().info('🦾 Ready for pick/place operations.')
 
         # Start main robot loop
-        self.create_timer(1.0, self.main_loop)
+        self.create_timer(2.0, self.main_loop)
 
     def main_loop(self):
         if self.busy:
             return  # Don't run if already executing a sequence
 
-        # Example: check external state
+        self.get_logger().info('🦾 Checking robot state')
         req = RobotState.Request()
         req.command = 'get'
 
         future = self.state_client.call_async(req)
-        rclpy.task.spin_until_future_complete(self, future)
-        resp = future.result()
+        future.add_done_callback(self.on_state_response)
 
+    def on_state_response(self, future):
+        resp = future.result()
         if resp is None:
             self.get_logger().error('🦾 No state service response.')
             return
 
-        current_state = resp.state
+        current_state = resp.current_state  # use the field in your response!
+        self.get_logger().info(f'🦾 State: {current_state}')
+
         if current_state == 'ready_to_pick':
             self.get_logger().info('🦾 State: ready_to_pick; starting pick sequence.')
             self.busy = True
@@ -69,25 +72,39 @@ class ArmManager(Node):
         goal.request = self._make_joint_goal(joints)
         goal.planning_options.plan_only = False
 
+        self.get_logger().info(
+            f"🦾 Sending MoveGroup goal: {[f'{n}: {p}' for n, p in zip(JOINT_NAMES, joints)]}"
+        )
+
         result_future = self.movegroup_client.send_goal_async(goal)
-        rclpy.task.spin_until_future_complete(self, result_future)
+        rclpy.spin_until_future_complete(self, result_future)
         goal_handle = result_future.result()
+
+        self.get_logger().info(f"🦾 Goal accepted: {getattr(goal_handle, 'accepted', 'None')}")
+
         if not goal_handle.accepted:
             self.get_logger().error('🦾 Arm motion goal was rejected by MoveGroup!')
             return False
 
         result_future = goal_handle.get_result_async()
-        rclpy.task.spin_until_future_complete(self, result_future)
+        rclpy.spin_until_future_complete(self, result_future)
         result = result_future.result().result
+
+        self.get_logger().info(f"🦾 MoveGroup error_code: {getattr(result, 'error_code', 'None')}")
+
         return result.error_code.val == result.error_code.SUCCESS
 
     def _make_joint_goal(self, joints):
         req = MotionPlanRequest()
         req.group_name = PLANNING_GROUP
-        req.goal_constraints.joint_constraints = [
+        
+        c = Constraints()
+        c.joint_constraints = [
             JointConstraint(joint_name=n, position=p, weight=1.0)
             for n, p in zip(JOINT_NAMES, joints)
         ]
+
+        req.goal_constraints = [c]
         return req
 
     def pick_sequence(self):
@@ -113,7 +130,7 @@ class ArmManager(Node):
         req.command = 'set'
         req.new_state = new_state
         future = self.state_client.call_async(req)
-        rclpy.task.spin_until_future_complete(self, future)
+        rclpy.spin_until_future_complete(self, future)
         resp = future.result()
         if resp is not None and resp.success:
             self.get_logger().info(f"🦾 State updated to '{new_state}'.")
