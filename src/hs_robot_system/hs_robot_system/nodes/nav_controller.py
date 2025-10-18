@@ -10,6 +10,14 @@ from geometry_msgs.msg import PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from std_msgs.msg import String
 
+# ----------------------------------------------------------
+# Robot State and PLC Box Location Services
+from hs_robot_system_interfaces.srv import RobotState
+from hs_robot_system_interfaces.srv import PLCLocation
+
+# ----------------------------------------------------------
+# Log throttle limiter
+last_feedback_time = 0
 
 # --- Helper function to build a PoseStamped ---
 def make_pose(x: float, y: float, yaw: float) -> PoseStamped:
@@ -27,16 +35,24 @@ def make_pose(x: float, y: float, yaw: float) -> PoseStamped:
     ps.pose.orientation.w = math.cos(half)
     return ps
 
+# --- Function to drive robot manually for a duration ---
+def drive(linear_speed, angular_speed, duration_sec):
+    twist = Twist()
+    twist.linear.x = linear_speed
+    twist.angular.z = angular_speed
+    start_time = node.get_clock().now()
+    node.get_logger().info(f"🤖 Executing drive command for {duration_sec} seconds.")
+    while (node.get_clock().now() - start_time).nanoseconds < duration_sec * 1e9:
+        cmd_pub.publish(twist)
+        time.sleep(0.1)
+    # Stop after motion
+    twist.linear.x = 0.0
+    twist.angular.z = 0.0
+    cmd_pub.publish(twist)
+    node.get_logger().info("🤖 Drive command finished.")
 
 def main():
-    
-    # --- Set Default Robot State ---
-    #ignorePLC = False
-    #carrying = False
-    set_robot_state('idle')
-
-
-    # --- Define your goal locations ---
+    # --- Define goal locations ---
     locations = {
         'A': make_pose(6.0, -1.5, math.pi),
         'B': make_pose(6.0, -0.5, math.pi),
@@ -44,18 +60,15 @@ def main():
         'place': make_pose(31.0, -4.5, (3 * math.pi/2)) 
     }
     
-    # 1) Initialise ROS 2 and create a node
+    # Initialise ROS 2 and create a node
     rclpy.init()
     node = rclpy.create_node('hs_nav_controller')
 
-    # 2) Create an ActionClient for the NavigateToPose action
+    # Create an ActionClient for the NavigateToPose action
     client = ActionClient(node, NavigateToPose, 'navigate_to_pose')
 
-    # ----------------------------------------------------------
-    # PLC location request (service-based)
-    from hs_robot_system_interfaces.srv import PLCLocation  # adjust to your actual interface package
-
-    # Service client setup
+    # --- Services ---
+    # PLCLocation Service client setup
     plc_client = node.create_client(PLCLocation, 'get_plc_location')
 
     # Make sure the service is available before use
@@ -63,17 +76,41 @@ def main():
     plc_client.wait_for_service()
     node.get_logger().info('🤖 PLC location service available.')
 
-    # ----------------------------------------------------------
-    # Robot State (service-based)
-    from hs_robot_system_interfaces.srv import RobotState
-
-    # Robot State Service client
+    # Robot State Service client setup
     state_client = node.create_client(RobotState, 'robot_state_service')
     
     # Make sure the service is available before use
     node.get_logger().info('🤖 Connecting to robot_state_service...')
     state_client.wait_for_service()
     node.get_logger().info('🤖 Connected to robot_state_service.')
+
+    # --- Helper functions for Robot State service ---
+    # Query the robot_state_service for the current state.
+    def get_robot_state() -> str:
+        request = RobotState.Request()
+        request.command = 'get'
+        request.new_state = ''
+        future = state_client.call_async(request)
+        rclpy.spin_until_future_complete(node, future)
+        response = future.result()
+        if response.success:
+            return response.current_state.strip().lower()
+        else:
+            node.get_logger().warn('🤖 Failed to get robot state.')
+            return 'unknown'
+
+    # Set the robot state via the service.
+    def set_robot_state(new_state: str):  
+        request = RobotState.Request()
+        request.command = 'set'
+        request.new_state = new_state
+        future = state_client.call_async(request)
+        rclpy.spin_until_future_complete(node, future)
+        response = future.result()
+        if response.success:
+            node.get_logger().info(f"🤖 State updated → {new_state}")
+        else:
+            node.get_logger().warn(f"🤖 State update failed: {response.message}")
 
     # --- Publishers ---
     # Publisher: tell others when robot arrives; publishes to robot/arrived that robot is at location
@@ -98,11 +135,14 @@ def main():
         result_holder = {'success': False}
 
         def feedback_cb(fb):
+            global last_feedback_time
             if hasattr(fb.feedback, 'distance_remaining'):
                 dist = fb.feedback.distance_remaining
                 # Throttle the log output to reduce clutter
-                #node.get_logger().info(f"Distance remaining: {dist:.2f} m")
-                node.get_logger().info_throttle(2.0, f"🤖 Distance remaining: {dist:.2f} m")
+                now_sec = time.time()
+                if now_sec - last_feedback_time > 2.0:
+                    node.get_logger().info(f"🤖 Distance remaining: {dist:.2f} m")
+                    last_feedback_time = now_sec
 
         def goal_response_cb(future):
             goal_handle = future.result()
@@ -145,57 +185,22 @@ def main():
         
         return result_holder['success']
 
-    # --- Helper functions for Robot State service ---
-    # Query the robot_state_service for the current state.
-    def get_robot_state() -> str:
-        request = RobotState.Request()
-        request.command = 'get'
-        request.new_state = ''
-        future = state_client.call_async(request)
-        rclpy.spin_until_future_complete(node, future)
-        response = future.result()
-        if response.success:
-            return response.current_state.strip().lower()
-        else:
-            node.get_logger().warn('🤖 Failed to get robot state.')
-            return 'unknown'
-
-    # Set the robot state via the service.
-    def set_robot_state(new_state: str):  
-        request = RobotState.Request()
-        request.command = 'set'
-        request.new_state = new_state
-        future = state_client.call_async(request)
-        rclpy.spin_until_future_complete(node, future)
-        response = future.result()
-        if response.success:
-            node.get_logger().info(f"🤖 State updated → {new_state}")
-        else:
-            node.get_logger().warn(f"🤖 State update failed: {response.message}")
-
-    # --- Function to drive robot manually for a duration ---
-    def drive(linear_speed, angular_speed, duration_sec):
-        twist = Twist()
-        twist.linear.x = linear_speed
-        twist.angular.z = angular_speed
-        start_time = node.get_clock().now()
-        node.get_logger().info(f"🤖 Executing drive command for {duration_sec} seconds.")
-        while (node.get_clock().now() - start_time).nanoseconds < duration_sec * 1e9:
-            cmd_pub.publish(twist)
-            time.sleep(0.1)
-        # Stop after motion
-        twist.linear.x = 0.0
-        twist.angular.z = 0.0
-        cmd_pub.publish(twist)
-        node.get_logger().info("🤖 Drive command finished.")
-
     # Check every 5 seconds for new box location when idle 
     def periodic_plc_request():
-        if get_robot_state() == 'idle':
-            node.get_logger().info('Requesting new PLC box location...')
-            request_plc_location()
+        node.get_logger().info('🤖 Starting Periodic PLC Request')
+        # Async get current robot state
+        state_req = RobotState.Request()
+        state_req.command = 'get'
+        state_req.new_state = ''
+        state_future = state_client.call_async(state_req)
 
-    node.create_timer(5.0, periodic_plc_request)  
+        def state_response_cb(future):
+            response = future.result()
+            if response and response.success and response.current_state.strip().lower() == 'idle':
+                node.get_logger().info('🤖 Requesting new PLC box location...')
+                request_plc_location()
+        state_future.add_done_callback(state_response_cb)
+    node.create_timer(5.0, periodic_plc_request)
 
     def request_plc_location():
         """
@@ -205,7 +210,9 @@ def main():
         request = PLCLocation.Request()
         # If your service needs no request fields, skip filling anything
         future = plc_client.call_async(request)
-
+        
+        node.get_logger().info('🤖 PLC Request Location')
+        
         def response_cb(fut):
             try:
                 response = fut.result()
@@ -222,7 +229,6 @@ def main():
         future.add_done_callback(response_cb)
         return True
 
-
     # --- arm status (robot/arm_status) callback ---
     def arm_status_callback(msg: String):
         state = msg.data.strip().lower()
@@ -230,7 +236,7 @@ def main():
         if state == 'ready':
             current_state = get_robot_state()
 
-            if current == 'picking':
+            if current_state == 'picking':
                 # Pick complete -> Move to place
                 node.get_logger().info("🤖 Pick complete moving to place point.")
                 set_robot_state('move_to_place')
@@ -255,7 +261,7 @@ def main():
     # --- Subscribe to the arm topic ---
     node.create_subscription(String, 'robot/arm_status', arm_status_callback, 10) #subscribing to get that info, idk what the topic is
 
-
+    set_robot_state('idle')
 
     node.get_logger().info("🤖 Listening to PLC data and ready to move...")
     rclpy.spin(node)
