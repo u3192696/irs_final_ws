@@ -1,0 +1,5 @@
+# MoveTo.srv
+string target
+---
+bool success
+string message
