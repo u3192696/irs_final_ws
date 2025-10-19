@@ -50,47 +50,74 @@ class ArmManager(Node):
         return response
 
     # ----- ARM SEQUENCES -----
-    def pick_sequence(self):
-        if not self._move_to(PICK_POS):
-            return False
-        self.get_logger().info('🦾 At PICK_POS; waiting 2s for object grip...')
-        time.sleep(2.0)
-        if not self._move_to(CARRY_POS):
-            return False
-        self.get_logger().info('🦾 Pick sequence completed.')
-        return True
+    def pick_sequence(self, service_response_callback):
+        def to_pick_done(success):
+            if not success:
+                service_response_callback(False)
+                return
+            # Replace time.sleep() with Timer
+            self.get_logger().info('🦾 Completed pick... Moving to carry')
+            self.create_timer(3.0, lambda: self.moveto(CARRY_POS, to_carry_done))
+    
+        def to_carry_done(success):
+            self.get_logger().info('🦾 Completed carry')
+            service_response_callback(success)
+    
+        self.moveto(PICK_POS, to_pick_done)
 
-    def place_sequence(self):
-        if not self._move_to(PLACE_POS):
-            return False
-        self.get_logger().info('🦾 At PLACE_POS; waiting 2s for box drop...')
-        time.sleep(2.0)
-        if not self._move_to(HOME_POS):
-            return False
-        self.get_logger().info('🦾 Place sequence completed.')
-        return True
+    def perform_pick(self, request, response):
+        def complete_pick(success):
+            response.success = success
+            self.get_logger().info('🦾 Ready to navigate to PLACE location')
+            return response
+        self.pick_sequence(complete_pick)
+    
+    def place_sequence(self, service_response_callback):
+        def to_place_done(success):
+            if not success:
+                service_response_callback(False)
+                return
+            # Replace time.sleep() with Timer
+            self.get_logger().info('🦾 Completed place... Moving to home')
+            self.create_timer(1.0, lambda: self.moveto(HOME_POS, to_home_done))
+    
+        def to_home_done(success):
+            self.get_logger().info('🦾 Completed home')
+            service_response_callback(success)
+    
+        self.moveto(PLACE_POS, to_place_done)
 
+    def perform_place(self, request, response):
+        def complete_place(success):
+            response.success = success
+            self.get_logger().info('🦾 Completed place... Returning to idle')
+            return response
+        self.place_sequence(complete_place)
 
-    def _move_to(self, joints):
+    def _move_to(self, joints, final_callback):
         goal = self._goal_from_joints(joints)
         send_future = self.client.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, send_future)
-        goal_handle = send_future.result()
-        if not goal_handle.accepted:
-            self.get_logger().error('🦾 MoveGroup goal rejected.')
-            return False
-
-        result_future = goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, result_future)
-        result = result_future.result()
-        error_code = result.result.error_code.val
-
-        if error_code == 1:
-            self.get_logger().info('🦾 MoveGroup motion succeeded.')
-            return True
-        else:
-            self.get_logger().error(f'🦾 MoveGroup motion failed (code={error_code}).')
-            return False
+        
+        def goal_sent_callback(send_future):
+            goal_handle = send_future.result()
+            if not goal_handle.accepted:
+                self.get_logger().error("🦾 MoveGroup goal rejected.")
+                final_callback(False)
+                return
+            result_future = goal_handle.get_result_async()
+            
+            def result_callback(result_future):
+                result = result_future.result()
+                error_code = result.result.error_code.val
+                if error_code == 1:
+                    self.get_logger().info("🦾 MoveGroup motion succeeded.")
+                    final_callback(True)
+                else:
+                    self.get_logger().error(f"🦾 MoveGroup motion failed code {error_code}.")
+                    final_callback(False)
+            
+            result_future.add_done_callback(result_callback)
+        send_future.add_done_callback(goal_sent_callback)
 
     def _goal_from_joints(self, joints):
         goal = MoveGroup.Goal()
@@ -115,7 +142,6 @@ class ArmManager(Node):
         goal.planning_options.plan_only = False
         return goal
    
-
 def main(args=None):
     rclpy.init(args=args)
     node = ArmManager()

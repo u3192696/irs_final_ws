@@ -7,9 +7,6 @@ from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 
-#from hs_robot_system_interfaces.srv import PLCLocation, RobotState
-
-# define a simple srv with "string target" and "bool success"
 from hs_robot_system_interfaces.srv import MoveTo
 
 class NavController(Node):
@@ -27,15 +24,55 @@ class NavController(Node):
             'A': self.make_pose(6.0, -1.5, math.pi),
             'B': self.make_pose(6.0, -0.5, math.pi),
             'C': self.make_pose(6.0, 0.5, math.pi),
-            'place': self.make_pose(31.0, -4.5, (3 * math.pi / 2))
+            'PLACE': self.make_pose(31.0, -4.5, (3 * math.pi / 2))
         }
 
         # Expose services for workflow_manager
-        self.pick_service = self.create_service(MoveTo, 'go_to_pick', self.handle_go_to_pick)
-        self.place_service = self.create_service(MoveTo, 'go_to_place', self.handle_go_to_place)
+        #self.pick_service = self.create_service(MoveTo, 'go_to_pick', self.handle_go_to_pick)
+        #self.place_service = self.create_service(MoveTo, 'go_to_place', self.handle_go_to_place)
+
+        self.go_to_goal_srv = self.create_service(MoveTo, 'go_to_goal', self.handle_go_to_goal)
+
+        # To keep track of outstanding service responses ???
+        self.pending_responses = {}
 
         self.get_logger().info('🤖 NavController ready for workflow service calls.')
     
+    def handle_go_to_goal(self, request, response):
+        goal_key = request.target.strip().upper()
+        if goal_key not in self.locations:
+            self.get_logger().error(f'🤖 Unknown target: {goal_key}')
+            response.success = False
+            return response
+        
+        pose = self.locations[goal_key]
+        nav_goal = NavigateToPose.Goal()
+        nav_goal.pose = pose
+        
+        send_future = self.nav_client.send_goal_async(nav_goal)
+        send_future.add_done_callback(lambda f: self.goal_sent_cb(f, goal_key))
+        response.success = True
+        return response
+        
+    def goal_sent_cb(self, send_future, goal_key):
+        goal_handle = send_future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn('🤖 Navigation goal was rejected.')
+            return
+        get_result_future = goal_handle.get_result_async()
+        get_result_future.add_done_callback(lambda f: self.goal_result_cb(f, goal_key))
+
+    def goal_result_cb(self, result_future, goal_key):
+        result = result_future.result()
+
+        is_success = (getattr(result, 'status', None) == 4)
+        response.success = is_success
+        if is_success:
+            self.get_logger().info(f'🤖 Arrived at {goal_key}! Navigation successful.')
+        else:
+            self.get_logger().warn(f'🤖 Navigation to {goal_key} failed, status code={getattr(result, "status", None)}')
+        return response
+
     # Helper function to generate a pose
     def make_pose(self, x, y, yaw):
         pose = PoseStamped()
@@ -45,49 +82,6 @@ class NavController(Node):
         pose.pose.orientation.z = math.sin(yaw / 2.0)
         pose.pose.orientation.w = math.cos(yaw / 2.0)
         return pose
-
-    # Workflow-triggered service handlers
-    def handle_go_to_pick(self, request, response):
-        target = request.target.strip().upper()
-        if target not in self.locations:
-            self.get_logger().error(f'🤖 Invalid pick target: {target}')
-            response.success = False
-            return response
-
-        self.get_logger().info(f'🤖 Navigating to pick location: {target}')
-        response.success = self.navigate_to(target)
-        return response
-
-    def handle_go_to_place(self, request, response):
-        self.get_logger().info('🤖 Navigating to place location...')
-        response.success = self.navigate_to('place')
-        return response
-
-    # Synchronous navigation to target key
-    def navigate_to(self, location_key):
-        pose = self.locations[location_key]
-        pose.header.stamp = self.get_clock().now().to_msg()
-
-        goal = NavigateToPose.Goal()
-        goal.pose = pose
-
-        send_future = self.nav_client.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, send_future)
-        goal_handle = send_future.result()
-        if not goal_handle.accepted:
-            self.get_logger().error('🤖 Navigation goal rejected.')
-            return False
-
-        self.get_logger().info('🤖 Navigation goal accepted; executing...')
-        result_future = goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, result_future)
-        result = result_future.result()
-        if result.status == 4:
-            self.get_logger().info('🤖 Navigation goal completed successfully.')
-            return True
-        else:
-            self.get_logger().warn(f'🤖 Navigation failed (result code {result.status}).')
-            return False
 
 def main(args=None):
     rclpy.init(args=args)
