@@ -18,8 +18,12 @@
 
   <buildtool_depend>ament_python</buildtool_depend>
 
+  <build_depend>std_srvs</build_depend>
+
   <exec_depend>hs_robot_system_interfaces</exec_depend>
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>moveit_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>

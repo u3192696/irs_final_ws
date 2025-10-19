@@ -165,13 +165,6 @@ def generate_launch_description():
         output='screen'
     )
 
-    robot_state_service = Node(
-        package='hs_robot_system',
-        executable='robot_state_service',
-        name='robot_state_service',
-        output='screen'
-    )
-
     nav_controller = Node(
         package='hs_robot_system',
         executable='nav_controller',
@@ -184,6 +177,13 @@ def generate_launch_description():
         executable='arm_manager',
         name='arm_manager',
         output='screen'
+    )
+
+    workflow_manager = Node(
+       package='hs_robot_system',
+       executable='workflow_manager',
+       name='workflow_manager',
+       output='screen'
     )
 
     # --- Final Launch Description
@@ -213,7 +213,7 @@ def generate_launch_description():
 
         # Integration nodes
         plc_service,
-        robot_state_service,
         nav_controller,
-        arm_manager
+        arm_manager,
+        workflow_manager
     ])
