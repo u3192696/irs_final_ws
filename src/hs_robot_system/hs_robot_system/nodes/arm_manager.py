@@ -4,20 +4,21 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionClient
+from rclpy.action import ActionServer, ActionClient, CancelResponse, GoalResponse
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import MotionPlanRequest, Constraints, JointConstraint
 
-from std_srvs.srv import Trigger
+from hs_robot_system_interfaces.action import ArmTask
 
+# ----- CONSTANTS -----
 JOINT_NAMES = ['joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6']
 PLANNING_GROUP = 'tmr_arm'
-ACTION_NAME = '/move_action'
+MOVEGROUP_ACTION = '/move_action'
 
 # ----- ARM POSITIONS -----
-PICK_POS = [0.0, ((45*math.pi)/180), ((45*math.pi)/180), 0.0, ((90*math.pi)/180), 0.0]
-PLACE_POS = [0.0, ((40*math.pi)/180), ((45*math.pi)/180), ((5*math.pi)/180), ((90*math.pi)/180), 0.0]
-CARRY_POS = [((180*math.pi)/180), 0.0, ((90*math.pi)/180), 0.0, ((90*math.pi)/180), 0.0]
+PICK_POS = [0.0, math.radians(45), math.radians(45), 0.0, math.radians(90), 0.0]
+PLACE_POS = [0.0, math.radians(40), math.radians(45), math.radians(5), math.radians(90), 0.0]
+CARRY_POS = [math.radians(180), 0.0, math.radians(90), 0.0, math.radians(90), 0.0]
 HOME_POS = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 class ArmManager(Node):
@@ -26,124 +27,120 @@ class ArmManager(Node):
         
 
         # Setup MoveGroup action client
-        self.client = ActionClient(self, MoveGroup, ACTION_NAME)
+        self.move_client = ActionClient(self, MoveGroup, MOVEGROUP_ACTION)
         self.get_logger().info('🦾 Waiting for MoveGroup action server...')
-        self.client.wait_for_server()
+        self.move_client.wait_for_server()
         self.get_logger().info('🦾 Connected to MoveGroup server.')
 
-        # Services exposed to workflow_manager
-        self.pick_service = self.create_service(Trigger, 'perform_pick', self.perform_pick)
-        self.place_service = self.create_service(Trigger, 'perform_place', self.perform_place)
-        self.get_logger().info('🦾 ArmManager ready for workflow service calls.')
+        # Setup ArmTask action server for workflow_manager
+        self.server = ActionServer(
+            self,
+            ArmTask,
+            'arm_task',
+            execute_callback=self.execute_callback,
+            goal_callback=self.goal_callback,
+            cancel_callback=self.cancel_callback,
+        )
+        self.get_logger().info('🦾 ArmManager ready for workflow tasks.')
 
-    # ----- WORKFLOW ENTRY POINTS -----
-    def perform_pick(self, request, response):
-        self.get_logger().info('🦾 Starting pick sequence...')
-        success = self.pick_sequence()
-        response.success = success
-        return response
 
-    def perform_place(self, request, response):
-        self.get_logger().info('🦾 Starting place sequence...')
-        success = self.place_sequence()
-        response.success = success
-        return response
+    # Action goal received
+    def goal_callback(self, goal_request):
+        self.get_logger().info(f'🦾 New ArmTask goal: {goal_request.mode}')
+        return GoalResponse.ACCEPT
 
-    # ----- ARM SEQUENCES -----
-    def pick_sequence(self, service_response_callback):
-        def to_pick_done(success):
-            if not success:
-                service_response_callback(False)
-                return
-            # Replace time.sleep() with Timer
-            self.get_logger().info('🦾 Completed pick... Moving to carry')
-            self.create_timer(3.0, lambda: self.moveto(CARRY_POS, to_carry_done))
-    
-        def to_carry_done(success):
-            self.get_logger().info('🦾 Completed carry')
-            service_response_callback(success)
-    
-        self.moveto(PICK_POS, to_pick_done)
+    # Cancel request
+    def cancel_callback(self, goal_handle):
+        self.get_logger().info('🦾 Cancel request received for ArmTask.')
+        return CancelResponse.ACCEPT
 
-    def perform_pick(self, request, response):
-        def complete_pick(success):
-            response.success = success
-            self.get_logger().info('🦾 Ready to navigate to PLACE location')
-            return response
-        self.pick_sequence(complete_pick)
-    
-    def place_sequence(self, service_response_callback):
-        def to_place_done(success):
-            if not success:
-                service_response_callback(False)
-                return
-            # Replace time.sleep() with Timer
-            self.get_logger().info('🦾 Completed place... Moving to home')
-            self.create_timer(1.0, lambda: self.moveto(HOME_POS, to_home_done))
-    
-        def to_home_done(success):
-            self.get_logger().info('🦾 Completed home')
-            service_response_callback(success)
-    
-        self.moveto(PLACE_POS, to_place_done)
-
-    def perform_place(self, request, response):
-        def complete_place(success):
-            response.success = success
-            self.get_logger().info('🦾 Completed place... Returning to idle')
-            return response
-        self.place_sequence(complete_place)
-
-    def _move_to(self, joints, final_callback):
-        goal = self._goal_from_joints(joints)
-        send_future = self.client.send_goal_async(goal)
-        
-        def goal_sent_callback(send_future):
-            goal_handle = send_future.result()
-            if not goal_handle.accepted:
-                self.get_logger().error("🦾 MoveGroup goal rejected.")
-                final_callback(False)
-                return
-            result_future = goal_handle.get_result_async()
-            
-            def result_callback(result_future):
-                result = result_future.result()
-                error_code = result.result.error_code.val
-                if error_code == 1:
-                    self.get_logger().info("🦾 MoveGroup motion succeeded.")
-                    final_callback(True)
-                else:
-                    self.get_logger().error(f"🦾 MoveGroup motion failed code {error_code}.")
-                    final_callback(False)
-            
-            result_future.add_done_callback(result_callback)
-        send_future.add_done_callback(goal_sent_callback)
-
-    def _goal_from_joints(self, joints):
-        goal = MoveGroup.Goal()
+    # Create MoveGroup planning request
+    def _make_request(self, joint_targets):
         req = MotionPlanRequest()
         req.group_name = PLANNING_GROUP
-        req.num_planning_attempts = 10
-        req.allowed_planning_time = 5.0
-        req.max_velocity_scaling_factor = 0.5
-        req.max_acceleration_scaling_factor = 0.5
 
-        cs = Constraints()
-        for jname, jval in zip(JOINT_NAMES, joints):
-            jc = JointConstraint()
-            jc.joint_name = jname
-            jc.position = jval
-            jc.tolerance_above = 0.01
-            jc.tolerance_below = 0.01
-            jc.weight = 1.0
-            cs.joint_constraints.append(jc)
-        req.goal_constraints.append(cs)
-        goal.request = req
-        goal.planning_options.plan_only = False
-        return goal
-   
-def main(args=None):
-    rclpy.init(args=args)
+        goal_constraints = []
+        for i, position in enumerate(joint_targets):
+            j = JointConstraint()
+            j.joint_name = JOINT_NAMES[i]
+            j.position = position
+            j.tolerance_above = 0.001
+            j.tolerance_below = 0.001
+            j.weight = 1.0
+            goal_constraints.append(j)
+
+        req.goal_constraints = [Constraints(name='target_pose', joint_constraints=goal_constraints)]
+        return req
+    
+    # Execute ArmTask goal
+    async def execute_callback(self, goal_handle):
+        mode = goal_handle.request.mode.lower()
+        feedback = ArmTask.Feedback()
+        result = ArmTask.Result()
+        self.get_logger().info(f'🦾 Executing ArmTask: {mode}')
+
+        # Define motion sequences by mode
+        if mode == 'pick':
+            sequence = [HOME_POS, PICK_POS, CARRY_POS]
+        elif mode == 'place':
+            sequence = [CARRY_POS, PLACE_POS, HOME_POS]
+        else:
+            msg = f'Unknown mode: {mode}'
+            self.get_logger().error(msg)
+            goal_handle.abort()
+            result.success = False
+            result.message = msg
+            return result
+
+        # Execute each waypoint with MoveGroup
+        #self.move_client.wait_for_server()
+
+        for i, posture in enumerate(sequence):
+            feedback.step = f'Step {i+1}/{len(sequence)}: moving joints'
+            feedback.progress = float(i+1) / len(sequence)
+            goal_handle.publish_feedback(feedback)
+
+            move_goal = MoveGroup.Goal()
+            move_goal.request = self._make_request(posture)
+
+            goal_future = self.move_client.send_goal_async(move_goal)
+            move_goal_handle = await goal_future
+
+            if not move_goal_handle.accepted:
+                self.get_logger().warn('🦾 MoveGroup goal rejected.')
+                goal_handle.abort()
+                result.success = False
+                result.message = 'Planning failed'
+                return result
+
+            # Wait on MoveGroup result
+            result_future = move_goal_handle.get_result_async()
+            move_result = await result_future
+            code = move_result.result.error_code.val
+
+            # Check MoveGroup result code
+            if code != 1:  # SUCCESS == 1
+                self.get_logger().error(f'🦾 MoveGroup execution failed with code: {code}')
+                goal_handle.abort()
+                result.success = False
+                result.message = f'MoveGroup error {code}'
+                return result
+
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                self.get_logger().warn('🦾 ArmTask motion canceled by client.')
+                result.success = False
+                result.message = 'Cancelled'
+                return result
+
+        goal_handle.succeed()
+        self.get_logger().info('🦾 ArmTask motion completed successfully.')
+        result.success = True
+        result.message = 'Motion complete'
+        return result
+    
+def main():
+    rclpy.init()
     node = ArmManager()
     
     try:

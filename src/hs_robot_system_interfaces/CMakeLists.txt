@@ -13,11 +13,13 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/ArmTask.action"
+  "action/NavigateTask.action"
   "srv/PLCLocation.srv"
-  "srv/MoveTo.srv"
-  DEPENDENCIES std_msgs
+  DEPENDENCIES builtin_interfaces action_msgs
 )
 
 #if(BUILD_TESTING)

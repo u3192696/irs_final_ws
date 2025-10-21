@@ -1,0 +1,15 @@
+# Goal
+# Requested action mode: "pick", "place", "home", etc.
+string mode
+---
+# Result
+# Indicates if the arm successfully executed its motion sequence
+bool success
+# Results message string
+string message
+---
+# Feedback
+# Current step description (e.g., "Moving to pick pose", "Executing trajectory")
+string step
+# Normalized progress value in [0.0, 1.0]
+float32 progress
