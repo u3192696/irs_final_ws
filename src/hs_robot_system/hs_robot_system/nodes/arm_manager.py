@@ -219,13 +219,13 @@ class ArmManager(Node):
             if mode == "pick" and step_index == 0:
                 self.get_logger().info("🦾 Waiting for box detection (weight_raw == ': 0 kg')...")
                 time.sleep(0.75)  # brief blocking pause
-                #while True:
-                #    time.sleep(0.75) # brief blocking pause
-                #    if self.unified_status_data:
-                #        box_weight = self.unified_status_data.get("box", {}).get("weight_raw", "")
-                #        if box_weight.strip() == ": 0 kg":
-                #            self.get_logger().info("🦾 Box attached")
-                #            break
+                while True:
+                    time.sleep(0.75) # brief blocking pause
+                    if self.unified_status_data:
+                        box_weight = self.unified_status_data.get("box", {}).get("weight_raw", "")
+                        if box_weight.strip() == ": 0 kg":
+                            self.get_logger().info("🦾 Box attached")
+                            break
                     
             if mode == "place" and step_index == 0:
                 self.get_logger().info("🦾 Pausing for box to drop")
@@ -258,68 +258,6 @@ class ArmManager(Node):
         except Exception as e:
             self.get_logger().error(f"🦾 Failed to read current state: {e}")
             return None
-
-
-    # Execute ArmTask goal
-#    async def execute_callback(self, goal_handle):
-#        mode = goal_handle.request.mode.lower()
-#        feedback = ArmTask.Feedback()
-#        result = ArmTask.Result()
-#        self.get_logger().info(f'🦾 Executing ArmTask: {mode}')
-#
-#        # Define motion sequences by mode
-#        if mode == 'pick':
-#            sequence = [HOME_POS, PICK_POS, CARRY_POS]
-#        elif mode == 'place':
-#            sequence = [CARRY_POS, PLACE_POS, HOME_POS]
-#        else:
-#            msg = f'Unknown mode: {mode}'
-#            self.get_logger().error(msg)
-#            goal_handle.abort()
-#            result.success = False
-#            result.message = msg
-#            return result
-#
-#        # Execute each waypoint with MoveGroup
-#        #self.move_client.wait_for_server()
-#
-#        for i, posture in enumerate(sequence):
-#            feedback.step = f'Step {i+1}/{len(sequence)}: moving joints'
-#            feedback.progress = float(i+1) / len(sequence)
-#            goal_handle.publish_feedback(feedback)
-#
-#            move_goal = MoveGroup.Goal()
-#            move_goal.request = self._make_request(posture)
-#
-#            goal_future = self.move_client.send_goal_async(move_goal)
-#            move_goal_handle = await goal_future
-#
-#            if not move_goal_handle.accepted:
-#                self.get_logger().warn('🦾 MoveGroup goal rejected.')
-#                goal_handle.abort()
-#                result.success = False
-#                result.message = 'Planning failed'
-#                return result
-#
-#            # Wait on MoveGroup result
-#            result_future = move_goal_handle.get_result_async()
-#            move_result = await result_future
-#            code = move_result.result.error_code.val
-#
-#            # Check MoveGroup result code
-#            if code != 1:  # SUCCESS == 1
-#                self.get_logger().error(f'🦾 MoveGroup execution failed with code: {code}')
-#                goal_handle.abort()
-#                result.success = False
-#                result.message = f'MoveGroup error {code}'
-#                return result
-#
-#            if goal_handle.is_cancel_requested:
-#                goal_handle.canceled()
-#                self.get_logger().warn('🦾 ArmTask motion canceled by client.')
-#                result.success = False
-#                result.message = 'Cancelled'
-#                return result
 
         goal_handle.succeed()
         self.get_logger().info('🦾 ArmTask motion completed successfully.')
