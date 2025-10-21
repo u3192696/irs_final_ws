@@ -53,7 +53,7 @@ class NavController(Node):
     # Action goal received
     def goal_callback(self, goal_request):
         self.get_logger().info(f'🤖 Received goal request: {goal_request.target}')
-        target = goal_request.target
+        target = goal_request.target.upper()
         if target not in self.locations:
             self.get_logger().warn(f'🤖 Rejected goal: invalid target "{target}".')
             return GoalResponse.REJECT

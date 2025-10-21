@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import random
+import time
 import rclpy
 from rclpy.node import Node
 
@@ -31,9 +31,9 @@ class PLC_Location_Server(Node):
         """
         Handles service call; returns a random location.
         """
-        # In a real version, you'd fetch current task/box location from a PLC or database
-        #location = random.choice(self._available_locations)
+        # Fetch current box location from PLC
         location = 'B'
+        time.sleep(2)
         self.get_logger().info(f"📦 PLC request received → responding with location {location}")
         response.location = location
         return response

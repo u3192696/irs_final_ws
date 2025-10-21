@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable, RegisterEventHandler, EmitEvent
+from launch.events import Shutdown
+from launch.event_handlers import OnProcessExit
 from launch_ros.actions import Node, LifecycleNode
 from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
-from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 
 
 def generate_launch_description():
@@ -184,6 +186,14 @@ def generate_launch_description():
        executable='workflow_manager',
        name='workflow_manager',
        output='screen'
+    )
+
+    # --- Shutdown Handler
+    shutdown_handler = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=workflow_manager,
+            on_exit=[EmitEvent(event=Shutdown())]
+        )
     )
 
     # --- Final Launch Description
