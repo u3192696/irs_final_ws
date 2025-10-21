@@ -116,7 +116,7 @@ class WorkflowManager(Node):
         if self.phase == 2:
             self.phase = 3
         elif self.phase == 4:
-            self.phase = 0
+            self.phase = 5
         else:
             self.phase = 0
         
@@ -146,14 +146,18 @@ class WorkflowManager(Node):
         if result.success:
             self.get_logger().info(f'🧠 ArmTask goal result success: {result.success}')
             self.get_logger().info(f'🧠 ArmTask goal result message: {result.message}')
-            self.phase = 4
-            self.busy = False
         else:
             self.get_logger().info(f'🧠 ArmTask goal result success: {result.success}')
             self.get_logger().info(f'🧠 ArmTask goal result message: {result.message}')
-            self.phase = 0
-            self.busy = True
-
+        
+        # Keep getting synchonisation errors related to arm position
+        # so hacking an override
+        if self.phase == 3:
+            self.phase = 4
+        elif self.phase == 5:
+            self.phase = 1
+        self.busy = False
+            
     def pick_box(self):
         if not self.busy:
             self.busy = True
@@ -164,9 +168,10 @@ class WorkflowManager(Node):
             self.busy = True
             self.send_nav_action('PLACE')
 
-
     def place_box(self):
-        pass
+        if not self.busy:
+            self.busy = True
+            self.send_arm_action('place')
 
     def workflow_action_default(self):
         self.phase = 0

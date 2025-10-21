@@ -4,16 +4,10 @@ import time
 import rclpy
 from rclpy.node import Node
 
-# If you later define a real srv file, change this import accordingly.
-# For now we'll use a generic std_srvs/Trigger approach or a placeholder.
 from hs_robot_system_interfaces.srv import PLCLocation
 
 
 class PLC_Location_Server(Node):
-    """
-    ROS 2 Service node that provides the next box location from 'PLC'.
-    """
-
     def __init__(self):
         super().__init__('plc_location_service')
         self.get_logger().info('📦 PLC Location Service starting...')
@@ -28,11 +22,8 @@ class PLC_Location_Server(Node):
         self._available_locations = ['A', 'B', 'C']
 
     def handle_plc_request(self, request, response):
-        """
-        Handles service call; returns a random location.
-        """
         # Fetch current box location from PLC
-        location = 'C'
+        location = 'A'
         time.sleep(2)
         self.get_logger().info(f"📦 PLC request received → responding with location {location}")
         response.location = location

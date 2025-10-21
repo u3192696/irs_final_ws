@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-
 import math
+import time
+
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient, ActionServer, GoalResponse, CancelResponse
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
 
 from hs_robot_system_interfaces.action import NavigateTask
@@ -13,6 +14,9 @@ from hs_robot_system_interfaces.action import NavigateTask
 class NavController(Node):
     def __init__(self):
         super().__init__('nav_controller')
+
+        # Topic subscription for performing manual navigation
+        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         
         # Action client for Nav2
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
@@ -34,13 +38,31 @@ class NavController(Node):
         self.locations = {
             'A': self.make_pose(6.0, -1.5, math.pi),
             'B': self.make_pose(6.0, -0.5, math.pi),
-            'C': self.make_pose(6.0, 0.5, math.pi + 0.2),
+            'C': self.make_pose(6.0, 0.5, math.pi - 0.2),
             #'PICK': self.make_pose(6.0, -0.5, math.pi),
-            'PLACE': self.make_pose(31.0, -4.5, (3 * math.pi / 2)+0.3)
+            'PLACE': self.make_pose(31.0, -4.0, (3 * math.pi / 2) - 0.2)
         }
+
+        self.firstMove = True
 
         self.get_logger().info('🤖 NavController ready for workflow tasks.')
 
+    # Manual drive function to help with pre-navigation repositioning
+    def drive(self, linear_speed, angular_speed, duration_sec):
+        twist = Twist()
+        twist.linear.x = linear_speed
+        twist.angular.z = angular_speed
+        start_time = self.get_clock().now()
+        self.get_logger().info(f"🤖 Executing drive command for {duration_sec} seconds.")
+        while (self.get_clock().now() - start_time).nanoseconds < duration_sec * 1e9:
+            self.cmd_pub.publish(twist)
+            time.sleep(0.1)
+        # Stop motion
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
+        self.cmd_pub.publish(twist)
+        self.get_logger().info("🤖 Drive command finished.")
+    
     # Helper function to generate a pose
     def make_pose(self, x, y, yaw):
         pose = PoseStamped()
@@ -68,13 +90,18 @@ class NavController(Node):
 
     # Execute navigation sequence
     async def execute_callback(self, goal_handle):
+        if not self.firstMove:
+            # --- Pre-navigation reposition ---
+            self.get_logger().info("🤖 Performing pre-navigation reposition step...")
+            self.drive(-0.15, 0.0, 1.0)    # back up for 2 seconds at 0.15 m/s
+            self.drive(0.0, -1.0, 2.4)      # rotate ~90° (tune angular speed & duration)
+            self.get_logger().info("🤖 Pre-navigation step complete, proceeding with Nav2 planning.")
+        self.firstMove = False
+
         target = goal_handle.request.target
         feedback = NavigateTask.Feedback()
         result = NavigateTask.Result()
         self.get_logger().info(f'🤖 Executing navigation task to {target}')
-
-        # Wait for Nav2 server
-        #self.nav_client.wait_for_server()
 
         # Set up NavigateToPose goal
         nav_goal = NavigateToPose.Goal()
