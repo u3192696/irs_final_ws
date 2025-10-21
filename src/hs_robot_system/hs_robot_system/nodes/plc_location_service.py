@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-
 import time
+import random
+
 import rclpy
 from rclpy.node import Node
 
@@ -23,7 +24,7 @@ class PLC_Location_Server(Node):
 
     def handle_plc_request(self, request, response):
         # Fetch current box location from PLC
-        location = 'A'
+        location = random.choice(self._available_locations)
         time.sleep(2)
         self.get_logger().info(f"📦 PLC request received → responding with location {location}")
         response.location = location

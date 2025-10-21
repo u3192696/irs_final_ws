@@ -21,10 +21,38 @@ PLANNING_GROUP = 'tmr_arm'
 MOVEGROUP_ACTION = '/move_action'
 
 # ----- ARM POSITIONS -----
-PICK_POS = [0.0, math.radians(45), math.radians(45), 0.0, math.radians(90), 0.0]
-PLACE_POS = [0.0, math.radians(40), math.radians(45), math.radians(5), math.radians(90), 0.0]
-CARRY_POS = [math.radians(180), 0.0, math.radians(90), 0.0, math.radians(90), 0.0]
-HOME_POS = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+PICK_POS = [
+    0.0,
+    math.radians(45),
+    math.radians(45),
+    0.0,
+    math.radians(90),
+    0.0
+]
+PLACE_POS = [
+    0.0,
+    math.radians(40),
+    math.radians(45),
+    math.radians(5),
+    math.radians(90),
+    0.0
+]
+CARRY_POS = [
+    math.radians(180),
+    0.0,
+    math.radians(90),
+    0.0,
+    math.radians(90),
+    0.0
+]
+HOME_POS = [
+    math.radians(2),     # small offset from 0
+    math.radians(-10),
+    math.radians(5),
+    math.radians(0),
+    math.radians(10),
+    math.radians(0)
+]
 
 class ArmManager(Node):
     def __init__(self):
@@ -87,8 +115,8 @@ class ArmManager(Node):
             j = JointConstraint()
             j.joint_name = JOINT_NAMES[i]
             j.position = position
-            j.tolerance_above = 0.1
-            j.tolerance_below = 0.1
+            j.tolerance_above = 0.01
+            j.tolerance_below = 0.01
             j.weight = 1.0
             goal_constraints.append(j)
 
@@ -111,7 +139,7 @@ class ArmManager(Node):
         elif mode == "place":
             sequences = [
                 [PLACE_POS],  # Move to place
-                [CARRY_POS]    # Return home after box cleared
+                [HOME_POS]    # Return home after box cleared
             ]
         else:
             self.get_logger().info(f"🦾 Error - Unknown mode: {mode}")
