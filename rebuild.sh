@@ -32,7 +32,7 @@ echo "=============================="
 echo ""
 
 # Clear terminal after short delay so messages are visible
-sleep 3
+sleep 2
 clear
 
 # Optional reminder message

@@ -32,7 +32,7 @@ class PLC_Location_Server(Node):
         Handles service call; returns a random location.
         """
         # Fetch current box location from PLC
-        location = 'B'
+        location = 'C'
         time.sleep(2)
         self.get_logger().info(f"📦 PLC request received → responding with location {location}")
         response.location = location

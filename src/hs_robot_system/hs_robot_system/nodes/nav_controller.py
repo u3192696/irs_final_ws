@@ -34,8 +34,9 @@ class NavController(Node):
         self.locations = {
             'A': self.make_pose(6.0, -1.5, math.pi),
             'B': self.make_pose(6.0, -0.5, math.pi),
-            'C': self.make_pose(6.0, 0.5, math.pi),
-            'PLACE': self.make_pose(31.0, -4.5, (3 * math.pi / 2))
+            'C': self.make_pose(6.0, 0.5, math.pi + 0.2),
+            #'PICK': self.make_pose(6.0, -0.5, math.pi),
+            'PLACE': self.make_pose(31.0, -4.5, (3 * math.pi / 2)+0.3)
         }
 
         self.get_logger().info('🤖 NavController ready for workflow tasks.')

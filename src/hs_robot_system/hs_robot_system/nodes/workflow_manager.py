@@ -143,10 +143,16 @@ class WorkflowManager(Node):
 
     def arm_goal_result_cb(self, result_future):
         result = result_future.result().result
-        self.get_logger().info(f'🧠 ArmTask goal result success: {result.success}')
-        self.get_logger().info(f'🧠 ArmTask goal result message: {result.message}')
-        self.phase = 4
-        self.busy = False
+        if result.success:
+            self.get_logger().info(f'🧠 ArmTask goal result success: {result.success}')
+            self.get_logger().info(f'🧠 ArmTask goal result message: {result.message}')
+            self.phase = 4
+            self.busy = False
+        else:
+            self.get_logger().info(f'🧠 ArmTask goal result success: {result.success}')
+            self.get_logger().info(f'🧠 ArmTask goal result message: {result.message}')
+            self.phase = 0
+            self.busy = True
 
     def pick_box(self):
         if not self.busy:
