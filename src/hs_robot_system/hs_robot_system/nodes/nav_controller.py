@@ -40,7 +40,7 @@ class NavController(Node):
             'B': self.make_pose(6.0, -0.5, math.pi),
             'C': self.make_pose(6.0, 0.5, math.pi - 0.2),
             #'PICK': self.make_pose(6.0, -0.5, math.pi),
-            'PLACE': self.make_pose(31.0, -4.0, (3 * math.pi / 2) - 0.2)
+            'PLACE': self.make_pose(31.0, -4.2, (3 * math.pi / 2) - 0.2)
         }
 
         self.firstMove = True

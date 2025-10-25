@@ -24,16 +24,10 @@ class WorkflowManager(Node):
     def __init__(self):
         super().__init__('workflow_manager')
         
-        # Start recurring timer to check PLC every 3 seconds while idle
-        self.plc_poll_timer = self.create_timer(3.0, self.periodic_plc_check)
-        self.get_logger().info('🧠 PLC polling timer started')
-
         self.phase = 0
         self.box_location = 'NONE'
         self.busy = True
-        self.retry_timer = None
-        self.timer_active = False
-        
+
         # Setup and connect to service and action servers
         conn_errors = 0
         # Service client for PLC
@@ -63,15 +57,7 @@ class WorkflowManager(Node):
             self.busy = False
             self.get_logger().info('🧠 WorkflowManager ready')
         
-    def periodic_plc_check(self):
-        if not self.busy and self.phase == 1:
-            self.get_logger().debug('🧠 Periodic PLC poll triggered.')
-            self.check_plc()
-   
     def check_plc(self):
-        if self.busy:
-            return
-        
         self.busy = True
         req = PLCLocation.Request()
         future = self.plc_client.call_async(req)
@@ -80,35 +66,23 @@ class WorkflowManager(Node):
     def check_plc_response(self, future):
         try:
             result = future.result()
-            location = (result.location.strip().upper()
-                        if result and result.location else "UNKNOWN")
-            valid_locations = ['A', 'B', 'C']
-
-            if location in valid_locations:
-                self.get_logger().info(f'🧠 Box detected at location {location}.')
-                self.phase = 2
-                self.box_location = location
-                self.busy = False
-            else:
-                self.get_logger().debug(
-                    f'🧠 No box detected or unstable (PLC returned {location}).'
-                )
+            if not result or not result.location or result.location == 'NONE':
+                self.get_logger().info('🧠 Idle — No box detected.')
                 self.box_location = 'NONE'
-                self.phase = 1
+                #wait 5 seconds before asking again
+                #time.sleep(5)
                 self.busy = False
+                return
+            
+            location = result.location.upper()
+            self.get_logger().info(f'🧠 Box detected at {location}.')
+            self.phase = 2
+            self.box_location = location
+            self.busy = False
 
         except Exception as e:
             self.get_logger().error(f'🧠 PLC check failed: {e}')
             self.phase = 0
-            self.busy = False
-
-    ## Not needed anymore ???
-    def retry_plc_check(self):
-        if self.busy:  # avoid collision
-            return
-        self.get_logger().debug('🧠 Retrying PLC location request...')
-        self.timer_active = False
-        self.check_plc()
 
     def move_to_pick(self):
         if not self.busy:
